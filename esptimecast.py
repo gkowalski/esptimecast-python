@@ -50,6 +50,7 @@ class ESPTimeCastClient:
         self.host = host
         self.base_url = f"http://{host}"
         self.timeout = timeout
+        self._uptime_data = None  # Stores the device uptime information
 
     def send_message(
         self,
@@ -289,3 +290,89 @@ class ESPTimeCastClient:
             speed=speed,
             seconds=seconds
         )
+
+    def get_uptime(self, refresh: bool = False) -> Dict[str, Any]:
+        """
+        Get device uptime information and store it in the client instance
+
+        Fetches and stores:
+        - hostname: Device hostname
+        - total_seconds: Total uptime in seconds since first boot
+        - total_formatted: Total uptime formatted as "Xd HH:MM:SS"
+        - session_seconds: Current session uptime in seconds
+        - session_formatted: Current session uptime formatted as "HH:MM:SS"
+        - version: Firmware version
+
+        Args:
+            refresh: If True, fetch fresh data from device. If False, return cached data if available.
+
+        Returns:
+            dict: Uptime data in JSON format
+
+        Raises:
+            ESPTimeCastException: On connection or HTTP errors
+
+        Example:
+            >>> uptime = client.get_uptime()
+            >>> print(uptime)
+            {'hostname': 'esptimecast', 'total_seconds': 151118, ...}
+            >>> print(client.uptime_hostname)
+            'esptimecast'
+            >>> print(client.uptime_version)
+            '1.4.0'
+        """
+        if self._uptime_data is None or refresh:
+            url = f"{self.base_url}/uptime"
+
+            try:
+                response = requests.get(url, timeout=self.timeout)
+                response.raise_for_status()
+
+                self._uptime_data = response.json()
+
+            except requests.exceptions.Timeout:
+                raise ESPTimeCastException(f"Request timed out after {self.timeout} seconds")
+            except requests.exceptions.ConnectionError:
+                raise ESPTimeCastException(f"Could not connect to {self.host}")
+            except requests.exceptions.HTTPError as e:
+                raise ESPTimeCastException(f"HTTP error: {e}")
+            except json.JSONDecodeError:
+                raise ESPTimeCastException("Invalid JSON response from device")
+
+        return self._uptime_data
+
+    # Uptime property accessors
+    @property
+    def uptime_data(self) -> Optional[Dict[str, Any]]:
+        """Get the cached uptime data (returns None if not yet fetched)"""
+        return self._uptime_data
+
+    @property
+    def uptime_hostname(self) -> Optional[str]:
+        """Get device hostname from uptime data. Returns None if uptime not loaded."""
+        return self._uptime_data.get('hostname') if self._uptime_data else None
+
+    @property
+    def uptime_total_seconds(self) -> Optional[int]:
+        """Get total uptime in seconds. Returns None if uptime not loaded."""
+        return self._uptime_data.get('total_seconds') if self._uptime_data else None
+
+    @property
+    def uptime_total_formatted(self) -> Optional[str]:
+        """Get total uptime formatted string. Returns None if uptime not loaded."""
+        return self._uptime_data.get('total_formatted') if self._uptime_data else None
+
+    @property
+    def uptime_session_seconds(self) -> Optional[int]:
+        """Get session uptime in seconds. Returns None if uptime not loaded."""
+        return self._uptime_data.get('session_seconds') if self._uptime_data else None
+
+    @property
+    def uptime_session_formatted(self) -> Optional[str]:
+        """Get session uptime formatted string. Returns None if uptime not loaded."""
+        return self._uptime_data.get('session_formatted') if self._uptime_data else None
+
+    @property
+    def uptime_version(self) -> Optional[str]:
+        """Get firmware version. Returns None if uptime not loaded."""
+        return self._uptime_data.get('version') if self._uptime_data else None
